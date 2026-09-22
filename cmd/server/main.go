@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -53,11 +54,13 @@ func main() {
 		Upstream:       up,
 		CheckinHours:   cfg.Schedule.CheckinHours,
 		KeepaliveHours: cfg.Schedule.KeepaliveHours,
+		StateFile:      scheduleStatePath(cfg.StateFile),
 	})
 
 	h := server.NewHandler(server.Config{
 		Pool:         p,
 		Upstream:     up,
+		Scheduler:    sch,
 		APIKey:       cfg.APIKey,
 		HardCooldown: cfg.HardCreditDur,
 		SoftCooldown: cfg.SoftRateDur,
@@ -71,7 +74,7 @@ func main() {
 	// 启动后延迟拉一次积分（立即刷新 pool.credits，不用等整点）
 	go func() {
 		time.Sleep(5 * time.Second)
-		sch.RunCheckinNow()
+		sch.RunCheckin("startup")
 	}()
 
 	srv := &http.Server{
@@ -91,4 +94,12 @@ func main() {
 		log.Fatalf("http: %v", err)
 	}
 	log.Printf("bye")
+}
+
+// scheduleStatePath 把 pool 的 state.json 换成同目录 schedule.json。
+func scheduleStatePath(stateFile string) string {
+	if stateFile == "" {
+		return "data/schedule.json"
+	}
+	return filepath.Join(filepath.Dir(stateFile), "schedule.json")
 }
