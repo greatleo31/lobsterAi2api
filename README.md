@@ -145,4 +145,4 @@ Diff against upstream `fe299f1`:
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Original work © 2026 xinxinshuhao-create; fork modifications © 2026 greatleo31.
+MIT — see [LICENSE](LICENSE), kept byte-identical to upstream so that GitHub detects the license. Original work © 2026 xinxinshuhao-create; fork modifications © 2026 greatleo31.
