@@ -9,6 +9,11 @@ data/
 *.dll
 *.so
 *.dylib
+# Linux/macOS 下脚本就地编译出的无扩展名产物
+/lobsterai2api
+/login
+/credit
+/checkin
 
 # Go 构建缓存
 *.test
@@ -24,3 +29,10 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# 登录脚本临时文件
+lb2a-url.tmp
+lb2a-err.tmp
+
+# 运行日志
+*.log
