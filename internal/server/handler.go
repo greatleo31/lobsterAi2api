@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"lobsterai2api/internal/pool"
+	"lobsterai2api/internal/scheduler"
 	"lobsterai2api/internal/upstream"
 )
 
@@ -18,13 +19,14 @@ import (
 type Config struct {
 	Pool         *pool.Pool
 	Upstream     *upstream.Client
-	APIKey       string        // 空 = 不鉴权
-	MaxRotate    int           // 单请求最多换号次数，默认 3
-	HardCooldown time.Duration // 余额不足冷却，默认 12h
-	SoftCooldown time.Duration // 429 冷却，默认 60s
-	ErrThreshold int           // 连续其他错误冷却阈值，默认 3
-	ErrCooldown  time.Duration // 错误冷却时长，默认 10m
-	RefreshSkew  time.Duration // token 提前刷新窗口，默认 10m
+	Scheduler    *scheduler.Scheduler // 可选；有则 /status 带 schedule 段
+	APIKey       string               // 空 = 不鉴权
+	MaxRotate    int                  // 单请求最多换号次数，默认 3
+	HardCooldown time.Duration        // 余额不足冷却，默认 12h
+	SoftCooldown time.Duration        // 429 冷却，默认 60s
+	ErrThreshold int                  // 连续其他错误冷却阈值，默认 3
+	ErrCooldown  time.Duration        // 错误冷却时长，默认 10m
+	RefreshSkew  time.Duration        // token 提前刷新窗口，默认 10m
 }
 
 // Handler 主路由。
@@ -84,9 +86,13 @@ func (h *Handler) healthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"accounts": h.cfg.Pool.List(),
-	})
+	}
+	if h.cfg.Scheduler != nil {
+		out["schedule"] = h.cfg.Scheduler.Status()
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // 静态模型表（动态接口失败时的回退）。
