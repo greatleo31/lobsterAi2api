@@ -32,9 +32,10 @@ func ServerBase() string {
 
 // apiEnvelope 上游统一信封。
 type apiEnvelope struct {
-	Code int             `json:"code"`
-	Msg  string          `json:"msg"`
-	Data json.RawMessage `json:"data"`
+	Code    int             `json:"code"`
+	Msg     string          `json:"msg"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
 }
 
 // Client 上游 HTTP 客户端。
@@ -81,11 +82,15 @@ func (c *Client) doJSON(req *http.Request) (json.RawMessage, error) {
 		return nil, fmt.Errorf("parse failed: %w (body: %s)", err, truncate(string(raw), 120))
 	}
 	if env.Code != 0 {
-		kind := Classify(resp.StatusCode, env.Msg)
+		msg := env.Msg
+		if msg == "" {
+			msg = env.Message
+		}
+		kind := Classify(resp.StatusCode, msg)
 		if kind == ErrNone {
 			kind = ErrClient
 		}
-		return nil, &Error{Kind: kind, Status: resp.StatusCode, Msg: fmt.Sprintf("code=%d msg=%s", env.Code, truncate(env.Msg, 160))}
+		return nil, &Error{Kind: kind, Status: resp.StatusCode, Msg: fmt.Sprintf("code=%d msg=%s", env.Code, truncate(msg, 160))}
 	}
 	return env.Data, nil
 }
@@ -278,44 +283,46 @@ func (c *Client) FetchModels(a *auth.Auth) ([]string, error) {
 	return ids, nil
 }
 
-// QuotaUsage 查询账号当前积分。
-// GET {server}/api/user/profile-summary 的 totalCreditsRemaining（含 free + campaign 活动积分）。
-// 注意: /api/user/quota 只显示 freeCreditsTotal=300, 不含 5000 活动积分。
-func (c *Client) QuotaUsage(a *auth.Auth) (remain int64, total int64, err error) {
+// CreditsRemaining 查询账号当前积分（含 free + campaign），保留小数。
+// GET {server}/api/user/profile-summary 的 totalCreditsRemaining。
+// 注意: /api/user/quota 只显示 freeCreditsTotal=300, 不含活动积分。
+func (c *Client) CreditsRemaining(a *auth.Auth) (float64, error) {
 	url := ServerBase() + "/api/user/profile-summary"
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+a.AccessToken)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", clientUA)
 	data, err := c.doJSON(req)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	var ps struct {
 		TotalCreditsRemaining float64 `json:"totalCreditsRemaining"`
 	}
 	if err := json.Unmarshal(data, &ps); err != nil {
-		return 0, 0, fmt.Errorf("profile-summary parse: %w", err)
+		return 0, fmt.Errorf("profile-summary parse: %w", err)
 	}
-	clamp := func(v float64) int64 {
-		if v < 0 {
-			return 0
-		}
-		return int64(v)
-	}
-	if ps.TotalCreditsRemaining > 0 {
-		return clamp(ps.TotalCreditsRemaining), 0, nil
-	}
-	return 0, 0, fmt.Errorf("profile-summary: no credits")
+	return ps.TotalCreditsRemaining, nil
 }
 
-// DailyCheckin 执行每日签到。目前龙虾签到端点未知，返回 nil（no-op）。
-// 后续抓包确定端点后再实现。
-func (c *Client) DailyCheckin(a *auth.Auth) error {
-	// TODO: LobsterAI daily sign-in endpoint TBD
-	// placeholder: return nil means "checkin skipped silently"
-	return nil
+func clampCredits(v float64) int64 {
+	if v < 0 {
+		return 0
+	}
+	return int64(v)
+}
+
+// QuotaUsage 查询账号当前积分（截成 int64，给账号池挑号用）。
+func (c *Client) QuotaUsage(a *auth.Auth) (remain int64, total int64, err error) {
+	v, err := c.CreditsRemaining(a)
+	if err != nil {
+		return 0, 0, err
+	}
+	if v > 0 {
+		return clampCredits(v), 0, nil
+	}
+	return 0, 0, fmt.Errorf("profile-summary: no credits")
 }
